@@ -1,11 +1,12 @@
-
 #include <linux/cdev.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/fs.h>
+#include <linux/device.h>
 #include <asm/uaccess.h>
+#include "command.h"
 
 #define MAX 127
 
@@ -13,6 +14,9 @@ static int mymajor = 245;
 static int myminor = 0;
 static int number_of_devices = 1;
 static char data[MAX - 1] = "The device name is hello. \n";
+
+struct class * hello_class;
+struct device * hello_device;
 
 static struct cdev cdev;
 
@@ -48,11 +52,29 @@ static ssize_t hello_write(struct file *filep, const char __user * buff, size_t 
 	return ret;
 }
 
+static long hello_ioctl(struct file * filep, unsigned int cmd, unsigned long arg){
+	long ret = 0;
+
+	switch(cmd){
+	case ONE:
+		printk("The command is one \n");
+		break;
+	case TWO:
+		printk("The command is two \n");
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
 static struct file_operations fops={
 	.owner = THIS_MODULE,
 	.open = hello_open,
 	.read = hello_read,
 	.write = hello_write,
+	.unlocked_ioctl = hello_ioctl,
 };
 
 static void char_reg_cdev(void){
@@ -80,13 +102,30 @@ static int __init hello_init(void){
 	}
 
 	char_reg_cdev();
+	
+	hello_class = class_create(THIS_MODULE, "hello");
+	if(IS_ERR(hello_class)){
+		printk("Err: failed in createing class! \n");
+		goto err2;
+	}
+
+	hello_device = device_create(hello_class, NULL, devnu, NULL, "coll");
+	if(IS_ERR(hello_device)){
+		printk("Err: failed in createing device! \n");
+		goto err3;
+	}
 
 	printk("Register character driver \'hello\'! \n");
 	return 0;
+
+err3:
+	class_destroy(hello_class);
+err2:
+	cdev_del(&cdev);
 err1:
 	unregister_chrdev_region(devnu, number_of_devices);
 	return ret;
-	
+
 }
 
 static void __exit hello_exit(void){
@@ -95,6 +134,8 @@ static void __exit hello_exit(void){
 	devnu = MKDEV(mymajor, myminor);
 	cdev_del(&cdev);
 	unregister_chrdev_region(devnu, number_of_devices);
+	class_destroy(hello_class);
+	device_destroy(hello_class,devnu);
 
 	printk("Bye driver \'hello\'!\n");
 }
