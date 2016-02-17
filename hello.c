@@ -5,20 +5,54 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/fs.h>
+#include <asm/uaccess.h>
+
+#define MAX 127
 
 static int mymajor = 245;
 static int myminor = 0;
 static int number_of_devices = 1;
+static char data[MAX - 1] = "The device name is hello. \n";
 
 static struct cdev cdev;
+
 static int hello_open(struct inode *inode, struct file *file){
 	printk("Hello, the device opened \n");
 	return 0;
 }
 
+static ssize_t hello_read(struct file *filep, char __user * buff, size_t count, loff_t * offp) {
+	int ret = 0;
+
+	if(*offp == 0){
+		if(count > MAX)
+			count = MAX;
+		copy_to_user(buff, data, count);
+		ret = count;
+	}
+	*offp = ret;
+
+	return ret;
+}
+
+static ssize_t hello_write(struct file *filep, const char __user * buff, size_t count, loff_t *offp){
+	ssize_t ret = 0;
+	if(count > MAX){
+		ret = -EFAULT;
+	}else {
+		memset(data, 0, MAX);
+		copy_from_user(data, buff, count);
+		data[count] = '\0';
+		ret = count;
+	}
+	return ret;
+}
+
 static struct file_operations fops={
 	.owner = THIS_MODULE,
 	.open = hello_open,
+	.read = hello_read,
+	.write = hello_write,
 };
 
 static void char_reg_cdev(void){
@@ -28,6 +62,7 @@ static void char_reg_cdev(void){
 static int __init hello_init(void){
 	int ret;
 	dev_t devnu = 0;
+
 	devnu = MKDEV(mymajor, myminor);
 
 	ret = register_chrdev_region(devnu, number_of_devices, "hello");
@@ -56,9 +91,11 @@ err1:
 
 static void __exit hello_exit(void){
 	dev_t devnu = 0;
+
 	devnu = MKDEV(mymajor, myminor);
 	cdev_del(&cdev);
 	unregister_chrdev_region(devnu, number_of_devices);
+
 	printk("Bye driver \'hello\'!\n");
 }
 
