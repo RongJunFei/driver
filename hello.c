@@ -1,37 +1,65 @@
+
 #include <linux/cdev.h>
-:q
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/fs.h>
 
-static int myinit = 222;
-static short int myshort = 111;
-static long int mylog = 333;
-static char * mystring = "My string";
+static int mymajor = 245;
+static int myminor = 0;
+static int number_of_devices = 1;
 
-module_param(myinit, int, 0400);
-MODULE_PARM_DESC(myinit, "An integer");
-
-module_param(myshort, short, 0400);
-MODULE_PARM_DESC(myshort, "A short integer");
-
-module_param(mylog, long, 0000);
-MODULE_PARM_DESC(mylog, "A long integer");
-
-module_param(mystring, charp, 0000);
-MODULE_PARM_DESC(mystring, "A character string");
-
-static int __init hello_init(void){
-	printk("Hello Linux device!\n");
-	printk("### myinit = %d \n", myinit);
-	printk("### myshort = %hd \n", myshort);
-	printk("### mylong = %ld \n", mylog);
-	printk("### mystring = %s \n", mystring);
+static struct cdev cdev;
+static int hello_open(struct inode *inode, struct file *file){
+	printk("Hello, the device opened \n");
 	return 0;
 }
 
+static struct file_operations fops={
+	.owner = THIS_MODULE,
+	.open = hello_open,
+};
+
+static void char_reg_cdev(void){
+	printk("Hello init function! \n");
+}
+
+static int __init hello_init(void){
+	int ret;
+	dev_t devnu = 0;
+	devnu = MKDEV(mymajor, myminor);
+
+	ret = register_chrdev_region(devnu, number_of_devices, "hello");
+	if(ret < 0){
+		printk("Hello: can't get major number %d \n", mymajor);
+		return ret;
+	}
+
+	cdev_init(&cdev, &fops);
+	cdev.owner = THIS_MODULE;
+	ret = cdev_add(&cdev, devnu, 1);
+	if(ret){
+		printk("Error %d adding cdev add! \n", ret);
+		goto err1;
+	}
+
+	char_reg_cdev();
+
+	printk("Register character driver \'hello\'! \n");
+	return 0;
+err1:
+	unregister_chrdev_region(devnu, number_of_devices);
+	return ret;
+	
+}
+
 static void __exit hello_exit(void){
-	printk("Bye Linux device!\n");
+	dev_t devnu = 0;
+	devnu = MKDEV(mymajor, myminor);
+	cdev_del(&cdev);
+	unregister_chrdev_region(devnu, number_of_devices);
+	printk("Bye driver \'hello\'!\n");
 }
 
 MODULE_AUTHOR("rjf");
